@@ -1,0 +1,10 @@
+ok thi se chia ra thu muc theo roomId di
+messagesLog/
+    f1.txt
+    f2.txt
+    g1.txt
+    g2.txt
+
+Cau truc tung file txt co ve se la
+
+UID:1/time:time/message:blablabla
