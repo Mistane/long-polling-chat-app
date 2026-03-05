@@ -1,11 +1,10 @@
 const fs = require("fs");
 const path = require("path");
 const filePath = path.join(__dirname, "registration.txt");
-const readableStream = fs.createReadStream(filePath, "utf8");
 
 const generateDb = async () => {
   console.log("Ok vo");
-
+  const readableStream = fs.createReadStream(filePath, "utf8");
   return new Promise((resolve, reject) => {
     let content = "";
     readableStream.on("data", (chunk) => {
