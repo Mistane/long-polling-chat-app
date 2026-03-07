@@ -2,3 +2,4 @@ username:Mistane/password:123456
 username:khang/password:123456
 username:hello/password:123456
 username:abcd/password:123456
+username:ena/password:ena

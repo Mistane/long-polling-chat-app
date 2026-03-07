@@ -83,6 +83,7 @@ const server = http.createServer(async (req, res) => {
     req.on("end", async () => {
       body = JSON.parse(body);
       const { username, password } = body;
+      console.log(username, password);
       let UID = "";
 
       const database = await db.generateDb();
@@ -147,38 +148,70 @@ const server = http.createServer(async (req, res) => {
     req.on("end", () => {
       body = JSON.parse(body);
       //store messageLog into folder
+      const { message, UID, roomId, timestamp } = body;
+      const filePath = path.join(__dirname, "messagesLog", `${roomId}.txt`);
 
-      for (const [key, value] of clients) {
-        value.client.end(JSON.stringify(body));
-        clearTimeout(value.timeoutId);
-        clients.delete(key);
+      fs.appendFile(
+        filePath,
+        `${UID}-${message}-${roomId}-${timestamp}\n`,
+        (err) => {
+          if (err) {
+            console.error("Error writing file:", err);
+            return;
+          } else {
+            console.log("Message inserted into db!");
+            for (const [key, value] of clients) {
+              //Check if roomId match and also if user is in the room
+              if (roomId === value.roomId) {
+                value.client.end(JSON.stringify(body));
+                clearTimeout(value.timeoutId);
+                clients.delete(key);
+              }
+            }
+            res.end(JSON.stringify({ message: "Message sent" }));
+          }
+        },
+      );
+    });
+  } else if (method === "GET" && pathname === "/chat") {
+    const roomId = req.headers["roomid"];
+    //Check if room exist
+
+    //-------------------
+
+    const filePath = path.join(__dirname, "messagesLog", `${roomId}.txt`);
+    fs.readFile(filePath, (err, data) => {
+      if (err) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ msg: "Couldnt find the requested room" }));
+      } else {
+        data = data.toString();
+        //remove the first line
+
+        const messageList = data.split("\n");
+        messageList.shift();
+        messageList.pop();
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(`${messageList.join("///")}`)); // /// is for separating messages lol assuming that no one would ever type 3 / in a row
       }
-      res.end(JSON.stringify({ message: "Message sent" }));
     });
   } else if (method === "POST" && pathname === "/chat") {
     let body = "";
     req.on("data", (chunk) => (body += chunk.toString()));
     req.on("end", async () => {
       body = JSON.parse(body);
-      console.log(body);
       let roomId = "";
       const { IDList } = body;
       const testFolder = "./messagesLog/";
       const files = await fs.readdirSync(testFolder);
       if (IDList.length == 2) {
         //CHeck if room already exist
-
-        let tmpRoomId = "";
-        let cnt = 0;
-        let cntId = 0;
-
+        let cnt = 0; //Count number of existing room
         await (async function () {
           for (const file of files) {
             if (file.charAt(0) === "f") {
-              cntId++;
-
+              cnt++;
               const firstLine = await readFirstLine(`./messagesLog/${file}`);
-              console.log("The first line is:", firstLine);
               const listId = firstLine.split("-");
               let mp = new Map();
               IDList.forEach((id) => {
@@ -192,29 +225,89 @@ const server = http.createServer(async (req, res) => {
               });
 
               let check = IDList.every((id) => mp.get(parseInt(id)) === 2);
-              console.log(check);
               if (check) {
-                tmpRoomId = file.slice(0, -4);
-                console.log("tmo room hien tai :", tmpRoomId);
-                return tmpRoomId;
+                roomId = file.slice(0, -4);
                 // res.writeHead(200, { "Content-Type": "application/json" });
                 // res.end(JSON.stringify(roomId));
               }
             }
-            cnt++;
           }
-          return -1;
+          return;
         })();
-        if (tmpRoomId == "") {
+        if (roomId == "") {
+          cnt++;
           roomId = `f${cnt}`;
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify(roomId));
+          //No matched room so create a new one
+          const filePath = path.join(__dirname, "messagesLog", `${roomId}.txt`);
+          fs.appendFile(filePath, `${IDList.join("-")}\n`, (err) => {
+            if (err) {
+              console.error("Error writing file:", err);
+              return;
+            } else {
+              console.log("Created a new room!");
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(JSON.stringify(roomId));
+            }
+          });
         } else {
-          roomId = tmpRoomId;
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(roomId));
         }
-      } else roomId += "g";
+      } else {
+        //CHeck if room already exist
+        let cnt = 0; //Count number of existing room
+        await (async function () {
+          for (const file of files) {
+            if (file.charAt(0) === "g") {
+              cnt++;
+              const firstLine = await readFirstLine(`./messagesLog/${file}`);
+              const listId = firstLine.split("-");
+
+              // if 2 lengths isnt the same skip this file
+              if (listId.length !== IDList) continue;
+
+              let mp = new Map();
+              IDList.forEach((id) => {
+                mp.set(parseInt(id), 1);
+              });
+
+              listId.forEach((id) => {
+                if (mp.get(parseInt(id)) === 1) {
+                  mp.set(parseInt(id), 2);
+                }
+              });
+
+              let check = IDList.every((id) => mp.get(parseInt(id)) === 2);
+              if (check) {
+                roomId = file.slice(0, -4);
+                // res.writeHead(200, { "Content-Type": "application/json" });
+                // res.end(JSON.stringify(roomId));
+              }
+            }
+          }
+          return;
+        })();
+        if (roomId == "") {
+          cnt++;
+          roomId = `f${cnt}`;
+          //No matched room so create a new one
+          const filePath = path.join(__dirname, "messagesLog", `${roomId}.txt`);
+          fs.appendFile(filePath, `${IDList.join("-")}\n`, (err) => {
+            if (err) {
+              console.error("Error writing file:", err);
+              return;
+            } else {
+              console.log("Created a new room!");
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(JSON.stringify(roomId));
+            }
+          });
+        } else {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(roomId));
+        }
+        roomId += "g";
+      }
       console.log("roomId cuoi cung : ", roomId);
     });
   } else {
