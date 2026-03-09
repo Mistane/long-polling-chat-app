@@ -74,9 +74,6 @@ button {
 
 /* ------------------ chat message ------------------- */
 .users {
-  position: absolute;
-  top: 50px;
-  left: 100px;
   width: 220px;
   padding: 15px;
   overflow-y: auto;
@@ -101,16 +98,64 @@ button {
   background: #e6e6e6;
 }
 
+.list-group {
+  border-top: 2px solid white;
+  padding: 10px 0 0 10px;
+  margin: 20px 0;
+}
+.group {
+  padding: 10px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  background: #f2f2f2;
+}
+
+.group:hover {
+  background: #e6e6e6;
+}
+
+.users-pane {
+  overflow-y: auto;
+  position: absolute;
+  padding: 20px;
+  top: 300px;
+  left: -200px;
+  width: 300px;
+  height: 300px;
+  background-color: pink;
+  display: none;
+}
+
+.exit-create-pane {
+  display: inline-block;
+  padding: 5px;
+  color: red;
+  background-color: white;
+  border-radius: 50%;
+}
+.user-checkbox {
+  display: inline-block;
+  color: white;
+}
 .chat-container {
+  position: relative;
   margin: 50px auto;
-  width: 400px;
   height: 600px;
+  width: 800px;
   background: #1e293b;
   border-radius: 16px;
   display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  flex-direction: row;
+  gap: 20px;
+  /* overflow: hidden; */
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.chat-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .chat-messages {
@@ -123,7 +168,7 @@ button {
 }
 
 .message {
-  max-width: 70%;
+  /* max-width: 70%; */
   padding: 10px 14px;
   border-radius: 12px;
   font-size: 14px;

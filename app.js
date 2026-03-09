@@ -63,16 +63,37 @@ const server = http.createServer(async (req, res) => {
     //check new messages in log, if yes retrieved immidiately
     //-----------------------------
 
+    const UID = req.headers["uid"];
     const timeoutId = setTimeout(() => {
       clients.delete(UID);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ message: null }));
     }, 30000);
 
-    const UID = req.headers["uid"];
-    const roomId = req.headers["roomid"];
+    const rooms = [];
+    const testFolder = "./messagesLog";
+    const files = await fs.readdirSync(testFolder);
+    await (async function () {
+      for (const file of files) {
+        if (file.charAt(0) === "g") {
+          const firstLine = await readFirstLine(`./messagesLog/${file}`);
+          //UID-UID-UID///Name
+          const listId = firstLine.split("///")[0].split("-");
+          listId.forEach((uid) => {
+            if (uid == UID) rooms.push(file.slice(0, -4));
+          });
+        } else {
+          const firstLine = await readFirstLine(`./messagesLog/${file}`);
+          //UID-UID-UID///Name
+          const listId = firstLine.split("-");
+          listId.forEach((uid) => {
+            if (uid == UID) rooms.push(file.slice(0, -4));
+          });
+        }
+      }
+    })();
 
-    clients.set(UID, { timeoutId, roomId, client: res });
+    clients.set(UID, { timeoutId, rooms, client: res });
   } else if (method === "POST" && pathname === "/users/login") {
     let body = "";
 
@@ -104,15 +125,38 @@ const server = http.createServer(async (req, res) => {
     });
   } else if (method === "GET" && pathname === "/users") {
     const UID = req.headers["uid"];
+    const flagGetRoom = req.headers["getroom"] || false;
     const database = await db.generateDb();
     const users = [];
+    const rooms = []; //get all group chat that the user is in
     for (const user of database) {
       if (user.UID != UID)
         users.push({ UID: user.UID, username: user.username });
     }
 
+    if (flagGetRoom) {
+      console.log("tim kiem room...");
+      //get room
+      const testFolder = "./messagesLog";
+      const files = await fs.readdirSync(testFolder);
+      await (async function () {
+        for (const file of files) {
+          if (file.charAt(0) === "g") {
+            const firstLine = await readFirstLine(`./messagesLog/${file}`);
+            //UID-UID-UID///Name
+            const listId = firstLine.split("///")[0].split("-");
+            const groupName = firstLine.split("///")[1];
+            listId.forEach((uid) => {
+              if (uid == UID)
+                rooms.push({ roomId: file.slice(0, -4), groupName });
+            });
+          }
+        }
+      })();
+    }
+
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(users));
+    res.end(JSON.stringify({ users, rooms }));
   } else if (method === "POST" && pathname === "/users/register") {
     let body = "";
 
@@ -162,13 +206,50 @@ const server = http.createServer(async (req, res) => {
             console.log("Message inserted into db!");
             for (const [key, value] of clients) {
               //Check if roomId match and also if user is in the room
-              if (roomId === value.roomId) {
+              let check = false;
+              value.rooms.forEach((roomID) => {
+                if (roomID === roomId) check = true;
+              });
+              if (check) {
                 value.client.end(JSON.stringify(body));
                 clearTimeout(value.timeoutId);
                 clients.delete(key);
               }
             }
             res.end(JSON.stringify({ message: "Message sent" }));
+          }
+        },
+      );
+    });
+  } else if (method === "POST" && pathname === "/groups") {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk.toString()));
+    req.on("end", async () => {
+      body = JSON.parse(body);
+      const testFolder = "./messagesLog";
+      const files = await fs.readdirSync(testFolder);
+      //CHeck if room already exist
+      let cnt = 0; //Count number of existing room
+      await (async function () {
+        for (const file of files) {
+          if (file.charAt(0) === "g") {
+            cnt++;
+          }
+        }
+      })();
+      const roomId = `g${cnt + 1}`;
+      const filePath = path.join(__dirname, "messagesLog", `${roomId}.txt`);
+      fs.appendFile(
+        filePath,
+        `${body.uidString}///${body.groupName}\n`,
+        (err) => {
+          if (err) {
+            console.error("Error writing file:", err);
+            return;
+          } else {
+            console.log("Created a new room!");
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify(roomId));
           }
         },
       );
@@ -192,7 +273,12 @@ const server = http.createServer(async (req, res) => {
         messageList.shift();
         messageList.pop();
         res.writeHead(401, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(`${messageList.join("///")}`)); // /// is for separating messages lol assuming that no one would ever type 3 / in a row
+        console.log("message list hien tai : ", messageList);
+        if (messageList.length == 0) {
+          res.end(JSON.stringify([]));
+        } else {
+          res.end(JSON.stringify(`${messageList.join("///")}`)); // /// is for separating messages lol assuming that no one would ever type 3 / in a row
+        }
       }
     });
   } else if (method === "POST" && pathname === "/chat") {
@@ -253,7 +339,9 @@ const server = http.createServer(async (req, res) => {
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(roomId));
         }
-      } else {
+      }
+      /*
+	    else {
         //CHeck if room already exist
         let cnt = 0; //Count number of existing room
         await (async function () {
@@ -261,7 +349,7 @@ const server = http.createServer(async (req, res) => {
             if (file.charAt(0) === "g") {
               cnt++;
               const firstLine = await readFirstLine(`./messagesLog/${file}`);
-              const listId = firstLine.split("-");
+              const listId = firstLine.split("///")[0].split("-");
 
               // if 2 lengths isnt the same skip this file
               if (listId.length !== IDList) continue;
@@ -308,6 +396,7 @@ const server = http.createServer(async (req, res) => {
         }
         roomId += "g";
       }
+	    */
       console.log("roomId cuoi cung : ", roomId);
     });
   } else {

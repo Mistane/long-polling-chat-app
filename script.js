@@ -103,21 +103,65 @@ if (chatContainer) {
   const infoUser = JSON.parse(localStorage.getItem("infoUser"));
   const usersContainer = chatContainer.querySelector(".users");
   const buttonCreateGroup = chatContainer.querySelector(".create-group-btn");
+  const listGroup = chatContainer.querySelector(".list-group");
   if (!localStorage.getItem("infoUser"))
     window.location.href = "/user/login.html";
 
   const { UID, username } = infoUser;
   fetch("/users", {
     method: "GET",
-    headers: { "Content-Type": "application/json", UID },
+    headers: { "Content-Type": "application/json", UID, getRoom: true },
   })
     .then((res) => res.json())
-    .then((users) => {
-      const html = users
+    .then((data) => {
+      const html = data.users
         .map((user) => {
-          return `<button class="user" uid=${user.UID}>${user.username} </button>`;
+          return `<div class="user" uid=${user.UID}>${user.username} </div>`;
         })
         .join("");
+
+      const htmlGroup = data.rooms
+        .map((room) => {
+          return `<div class="group" roomId=${room.roomId}>${room.groupName} </div>`;
+        })
+        .join("");
+      const div = document.createElement("div");
+      div.innerHTML = htmlGroup;
+      listGroup.appendChild(div);
+      const groupsList = document.querySelectorAll(".group");
+
+      groupsList.forEach((group) => {
+        group.addEventListener("click", async (e) => {
+          const roomId = group.getAttribute("roomid");
+          const res = await fetch("/chat", {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              roomId,
+            },
+          });
+          const url = new URL(location);
+          url.searchParams.set("roomId", roomId);
+          history.pushState({}, "", url);
+          const chatContainer = document.querySelector(".chat-container");
+          chatContainer.setAttribute("roomId", roomId);
+
+          let messages = await res.json();
+          if (messages.length !== 0) {
+            messages = messages.split("///");
+            messages.forEach((message) => {
+              const [uid, content] = message.split("-");
+              let tmpHTML = document.createElement("div");
+              tmpHTML.classList.add("message");
+              if (UID == uid) {
+                tmpHTML.classList.add("sent");
+              } else tmpHTML.classList.add("received");
+              tmpHTML.innerText = content;
+              messageList.append(tmpHTML);
+            });
+          }
+        });
+      });
 
       const messageList = chatContainer.querySelector(".chat-messages");
       const usersListContainer = document.createElement("div");
@@ -140,6 +184,11 @@ if (chatContainer) {
           let roomId = await res.json();
           console.log(roomId);
 
+          //insert query so that when reloading the page remain the same
+          const url = new URL(location);
+          url.searchParams.set("roomId", roomId);
+          history.pushState({}, "", url);
+
           res = await fetch("/chat", {
             method: "GET",
             headers: {
@@ -151,23 +200,29 @@ if (chatContainer) {
           let messages = await res.json();
           const chatContainer = document.querySelector(".chat-container");
           chatContainer.setAttribute("roomId", roomId);
-          messages = messages.split("///");
-          let messagesHTML = "";
-          messages.forEach((message) => {
-            const [uid, content] = message.split("-");
-            let tmpHTML = document.createElement("div");
-            tmpHTML.classList.add("message");
-            if (UID == uid) {
-              tmpHTML.classList.add("sent");
-            } else tmpHTML.classList.add("received");
-            tmpHTML.innerText = content;
-            console.log(tmpHTML);
-            messageList.append(tmpHTML);
-          });
-          getMessage();
+          if (messages.length !== 0) {
+            console.log("Ok co tin nhan ha");
+            messages = messages.split("///");
+            messages.forEach((message) => {
+              if (message !== null) {
+                const [uid, content] = message.split("-");
+                if (content !== "") {
+                  console.log("message la : ", message);
+                  let tmpHTML = document.createElement("div");
+                  tmpHTML.classList.add("message");
+                  if (UID == uid) {
+                    tmpHTML.classList.add("sent");
+                  } else tmpHTML.classList.add("received");
+                  tmpHTML.innerText = content;
+                  messageList.append(tmpHTML);
+                }
+              }
+            });
+          }
         });
       });
     });
+  getMessage();
 }
 //-----------------------------retrieve latest message--------------
 function getMessage() {
@@ -187,7 +242,6 @@ function getMessage() {
         headers: {
           "Content-Type": "application/json",
           UID: infoUser.UID,
-          roomId,
         },
       });
       if (res.status === 502) {
@@ -196,8 +250,15 @@ function getMessage() {
         await new Promise((resolve) => setTimeout(resolve, 1000));
         await getMessage();
       } else {
-        const { message, UID } = await res.json();
-        if (message !== " ") {
+        const { message, UID, roomId } = await res.json();
+        console.log("message tra ve : ", message);
+        const rooms = document.querySelectorAll("[roomid]");
+        rooms.forEach((room) => {
+          if (room.getAttribute("roomid") != roomId) {
+            room.style.border = "red";
+          }
+        });
+        if (message !== null) {
           let tmpHTML = document.createElement("div");
           tmpHTML.classList.add("message");
           if (UID == infoUser.UID) {
@@ -222,4 +283,76 @@ function getMessage() {
 
     getMessage();
   }
+}
+
+//--------------create a new group chat ----------------------------
+const createGroupBtn = document.querySelector(".create-group-btn");
+if (createGroupBtn) {
+  const infoUser = JSON.parse(localStorage.getItem("infoUser"));
+  if (!localStorage.getItem("infoUser"))
+    window.location.href = "/user/login.html";
+  createGroupBtn.addEventListener("click", async (e) => {
+    const createPane = document.querySelector(".users-pane");
+    const createGroupForm = document.querySelector("[create-group-form]");
+    createGroupForm.addEventListener("submit", (e) => e.preventDefault());
+    const groupNameField = document.querySelector("#group-name");
+    createPane.style.display = "block";
+
+    const res = await fetch("/users", {
+      method: "GET",
+      headers: { "Content-Type": "application/json", UID: infoUser.UID },
+    });
+    const data = await res.json();
+    const div = document.createElement("div");
+    const users = data.users;
+    console.log(data);
+    div.innerHTML = users
+      .map((user) => {
+        return `<div class="select-user-pane">
+            <input UID=${user.UID} type="checkbox" class="checkbox"/>
+            <div class="user-checkbox">${user.username}</div>
+          </div>
+		`;
+      })
+      .join("");
+    createPane.insertBefore(div, createGroupForm);
+    const exitBtn = createPane.querySelector(".exit-create-pane");
+    exitBtn.addEventListener("click", (e) => {
+      createPane.style.display = "none";
+      div.parentNode.removeChild(div);
+    });
+
+    let uidString = `${infoUser.UID}-`;
+    const checkboxes = document.querySelectorAll(".checkbox");
+    checkboxes.forEach((box) => {
+      box.addEventListener("click", (e) => {
+        const uid = box.getAttribute("uid");
+        if (uidString.includes(uid)) {
+          let idx = uidString.indexOf(uid);
+          if (idx == 0) uidString = uidString.substring(2, uidString.length);
+          else {
+            uidString =
+              uidString.substring(0, idx) +
+              uidString.substring(idx + 1, uidString.length - 1);
+          }
+        } else uidString += `${uid}-`;
+        console.log(uidString);
+      });
+    });
+
+    const createBtn = document.querySelector("button[create-group-btn]");
+    createBtn.addEventListener("click", async (e) => {
+      const groupName = groupNameField.value;
+      if (uidString !== "" && groupName !== "") {
+        uidString = uidString.slice(0, uidString.length - 1);
+        const res = await fetch("/groups", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", UID: infoUser.UID },
+          body: JSON.stringify({ uidString, groupName }),
+        });
+        const data = await res.json();
+        console.log(uidString);
+      }
+    });
+  });
 }
