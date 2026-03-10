@@ -1,3 +1,23 @@
+let unreadRooms = {
+  group: [],
+  friend: [],
+};
+
+function checkUnreadRooms() {
+  console.log("Room chua doc tin nhan gom : ", unreadRooms);
+}
+
+async function getUnreadRooms(UID){
+    const res = await fetch("/messages/unread", {
+	method  : "GET",
+	headers: {"Content-Type" : "application/json", UID}
+    })
+
+    const data = await res.json();
+    console.log(data);
+    unreadRooms = data;
+    
+}
 // --------------handle login logic -----------------------------
 const loginForm = document.querySelector("[login-form]");
 if (loginForm) {
@@ -108,6 +128,8 @@ if (chatContainer) {
     window.location.href = "/user/login.html";
 
   const { UID, username } = infoUser;
+    await getUnreadRooms(UID);
+    console.log("Unread room hien tai : ", unreadRooms);
   fetch("/users", {
     method: "GET",
     headers: { "Content-Type": "application/json", UID, getRoom: true },
@@ -132,6 +154,18 @@ if (chatContainer) {
 
       groupsList.forEach((group) => {
         group.addEventListener("click", async (e) => {
+          if (group.classList.contains("unread")) {
+            //remove groupId from unread room
+            checkUnreadRooms();
+            const groupId = group.getAttribute("roomid");
+            group.classList.remove("unread");
+            let idx = unreadRooms.group.indexOf(groupId);
+            console.log(unreadRooms.group);
+            if (idx !== -1) {
+              unreadRooms.group.splice(idx, 1);
+            }
+            checkUnreadRooms();
+          }
           const roomId = group.getAttribute("roomid");
           const res = await fetch("/chat", {
             method: "GET",
@@ -140,10 +174,12 @@ if (chatContainer) {
               roomId,
             },
           });
+          const chatContainer = document.querySelector(".chat-container");
+          const messageList = chatContainer.querySelector(".chat-messages");
+          messageList.innerHTML = "";
           const url = new URL(location);
           url.searchParams.set("roomId", roomId);
           history.pushState({}, "", url);
-          const chatContainer = document.querySelector(".chat-container");
           chatContainer.setAttribute("roomId", roomId);
 
           let messages = await res.json();
@@ -170,9 +206,9 @@ if (chatContainer) {
       usersContainer.insertBefore(usersListContainer, buttonCreateGroup);
       const usersList = chatContainer.querySelectorAll(".user");
       usersList.forEach((user) => {
+        const uid = user.getAttribute("uid");
         user.addEventListener("click", async (e) => {
           messageList.innerHTML = "";
-          const uid = user.getAttribute("uid");
           let res;
           res = await fetch("/chat", {
             method: "POST",
@@ -183,6 +219,18 @@ if (chatContainer) {
           });
           let roomId = await res.json();
           console.log(roomId);
+          if (user.classList.contains("unread")) {
+            //remove roomId from unread room
+            checkUnreadRooms();
+            user.classList.remove("unread");
+            let idx = unreadRooms.friend.indexOf(roomId);
+            if (idx !== -1) {
+              unreadRooms.friend.splice(idx, 1);
+              // console.log(unreadRooms.friend.splice(idx, 1))
+            }
+            console.log(unreadRooms.friend);
+            checkUnreadRooms();
+          }
 
           //insert query so that when reloading the page remain the same
           const url = new URL(location);
@@ -207,7 +255,6 @@ if (chatContainer) {
               if (message !== null) {
                 const [uid, content] = message.split("-");
                 if (content !== "") {
-                  console.log("message la : ", message);
                   let tmpHTML = document.createElement("div");
                   tmpHTML.classList.add("message");
                   if (UID == uid) {
@@ -226,6 +273,7 @@ if (chatContainer) {
 }
 //-----------------------------retrieve latest message--------------
 function getMessage() {
+  checkUnreadRooms();
   const chatMessages = document.querySelector(".chat-messages");
   if (chatMessages) {
     //If not login, force to login lol
@@ -233,9 +281,6 @@ function getMessage() {
     if (!localStorage.getItem("infoUser"))
       window.location.href = "/user/login.html";
     let res = "";
-    let roomId = document
-      .querySelector(".chat-container")
-      .getAttribute("roomid");
     const getMessage = async () => {
       res = await fetch("/messages", {
         method: "GET",
@@ -250,22 +295,43 @@ function getMessage() {
         await new Promise((resolve) => setTimeout(resolve, 1000));
         await getMessage();
       } else {
-        const { message, UID, roomId } = await res.json();
-        console.log("message tra ve : ", message);
-        const rooms = document.querySelectorAll("[roomid]");
-        rooms.forEach((room) => {
-          if (room.getAttribute("roomid") != roomId) {
-            room.style.border = "red";
-          }
-        });
+        const data = await res.json();
+        const { message, UID, roomId } = data;
         if (message !== null) {
-          let tmpHTML = document.createElement("div");
-          tmpHTML.classList.add("message");
-          if (UID == infoUser.UID) {
-            tmpHTML.classList.add("sent");
-          } else tmpHTML.classList.add("received");
-          tmpHTML.innerText = message;
-          chatMessages.append(tmpHTML);
+          let currentRoomId = document
+            .querySelector(".chat-container")
+            .getAttribute("roomid");
+          const roomChatList = document.querySelectorAll("[uid]");
+          const groupChatList = document.querySelectorAll("[roomid]");
+          if (roomId.charAt(0) === "f") {
+            console.log("Nay la ban gui den");
+            roomChatList.forEach((room) => {
+              const uid = room.getAttribute("uid");
+              if (uid == UID && currentRoomId != roomId) {
+                unreadRooms.friend.push(roomId);
+                room.classList.add("unread");
+              }
+            });
+          } else {
+            console.log("Nay la group gui den");
+            groupChatList.forEach((group) => {
+              const groupId = group.getAttribute("roomid");
+              if (groupId == roomId && currentRoomId != roomId) {
+                unreadRooms.group.push(`${groupId}`);
+                group.classList.add("unread");
+              }
+            });
+          }
+
+          if (currentRoomId == roomId) {
+            let tmpHTML = document.createElement("div");
+            tmpHTML.classList.add("message");
+            if (UID == infoUser.UID) {
+              tmpHTML.classList.add("sent");
+            } else tmpHTML.classList.add("received");
+            tmpHTML.innerText = message;
+            chatMessages.append(tmpHTML);
+          }
         }
 
         await getMessage();
@@ -305,7 +371,6 @@ if (createGroupBtn) {
     const data = await res.json();
     const div = document.createElement("div");
     const users = data.users;
-    console.log(data);
     div.innerHTML = users
       .map((user) => {
         return `<div class="select-user-pane">
@@ -356,3 +421,63 @@ if (createGroupBtn) {
     });
   });
 }
+
+async function renderRoomMessages() {
+  const messageList = chatContainer.querySelector(".chat-messages");
+  const { UID } = JSON.parse(localStorage.getItem("infoUser"));
+  console.log("UID la : ", UID);
+  const queryString = window.location.search;
+
+  const urlParams = new URLSearchParams(queryString);
+
+  const roomId = urlParams.get("roomId");
+  if (roomId) {
+    const res = await fetch("/chat", {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        roomId,
+      },
+    });
+
+    let messages = await res.json();
+    const chatContainer = document.querySelector(".chat-container");
+    const messageList = chatContainer.querySelector(".chat-messages");
+    messageList.innerHTML = "";
+    chatContainer.setAttribute("roomId", roomId);
+    if (messages.length !== 0) {
+      messages = messages.split("///");
+      messages.forEach((message) => {
+        if (message !== null) {
+          const [uid, content] = message.split("-");
+          if (content !== "") {
+            let tmpHTML = document.createElement("div");
+            tmpHTML.classList.add("message");
+            if (UID == uid) {
+              tmpHTML.classList.add("sent");
+            } else tmpHTML.classList.add("received");
+            tmpHTML.innerText = content;
+            messageList.append(tmpHTML);
+          }
+        }
+      });
+    }
+  }
+}
+
+renderRoomMessages();
+
+window.addEventListener("beforeunload", async (e) => {
+  const { UID } = JSON.parse(localStorage.getItem("infoUser"));
+  if (UID) {
+    navigator.sendBeacon(
+      "/messages/unread",
+      JSON.stringify({ UID, unreadRooms }),
+    );
+    // fetch("/messages/unread", {
+    //   method: "POST",
+    //   headers: { "Content-Type": "application.json" },
+    //   body: JSON.stringify(),
+    // });
+  }
+});

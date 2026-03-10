@@ -115,6 +115,10 @@ button {
   background: #e6e6e6;
 }
 
+.unread {
+  border: 3px solid red;
+}
+
 .users-pane {
   overflow-y: auto;
   position: absolute;
