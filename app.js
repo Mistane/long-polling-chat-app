@@ -8,13 +8,14 @@ function readFirstLine(filePath) {
   return new Promise((resolve, reject) => {
     const rl = readline.createInterface({
       input: fs.createReadStream(filePath),
-      crlfDelay: Infinity, // Handle both \r\n and \n line endings
+      // crlfDelay: Infinity, // Handle both \r\n and \n line endings
     });
 
     rl.on("line", (line) => {
       // This event is emitted once for each line
       rl.close(); // Close the interface and stop reading
-      resolve(line);
+      if (line === "") resolve("");
+      else resolve(line);
     });
 
     rl.on("close", () => {
@@ -29,21 +30,6 @@ function readFirstLine(filePath) {
   });
 }
 
-function readLastLine(filePath) {
-  return new Promise((resolve, reject) => {
-    const rl = readline.createInterface({
-      input: fs.createReadStream(filePath),
-      crlfDelay: Infinity,
-    });
-
-    let string = "";
-    rl.on("line", (line) => (string += `${line}-///-`));
-    rl.on("close", () => {
-      string = string.split("-///-");
-      resolve(string[string.length - 1]);
-    });
-  });
-}
 const db = require("./database/user.database.js");
 
 const mimeTypes = {
@@ -77,7 +63,6 @@ const server = http.createServer(async (req, res) => {
     // retrieve message route
 
     const UID = req.headers["uid"];
-    const currentTimestamp = req.headers["timestamp"];
     //check new messages in log, if yes retrieved immidiately
 
     const testFolder = "./messagesLog";
@@ -290,7 +275,6 @@ const server = http.createServer(async (req, res) => {
     req.on("data", (chunk) => (body += chunk.toString()));
     req.on("end", () => {
       body = JSON.parse(body);
-      console.log("Ok truoc khi unload no gui cho anh cai nay :", body);
 
       // Store UID and unread room to db
       // u{UID}.txt
@@ -298,8 +282,8 @@ const server = http.createServer(async (req, res) => {
       const UID = body.UID;
       const data = [...unreadRooms.friend, ...unreadRooms.group].join("-");
       const filePath = path.join(__dirname, "unreadRoom", `u${UID}.txt`);
-      console.log(data);
-      fs.appendFile(filePath, `${data}\n`, (err) => {
+      console.log("unread rooms : ", data);
+      fs.writeFile(filePath, `${data}`, (err) => {
         if (err) {
           console.error("Error writing file:", err);
         } else {
@@ -314,43 +298,50 @@ const server = http.createServer(async (req, res) => {
     const testFolder = "./unreadRoom/";
     const files = fs.readdirSync(testFolder);
     //CHeck if room already exist
-    let cnt = 0; //Count number of existing room
     await (async function () {
       for (const file of files) {
         if (file.charAt(1) == UID) {
-          const firstLine = await readFirstLine(`./unreadRoom/${file}`);
-          const idList = firstLine.split("-");
-          for (const roomId of idList) {
-            if (roomId.charAt(0) === "f") {
-              const filePath = path.join(
-                __dirname,
-                "messagesLog",
-                `${roomId}.txt`,
-              );
-              fs.readFile(filePath, async (err, data) => {
-                if (err) {
-                  console.log("error opening file");
-                } else {
-                  const firstLine = await readFirstLine(
-                    `./messagesLog/${roomId}.txt`,
-                  );
-                  console.log("firstline la : ", firstLine);
-                  let arr = firstLine.split("-");
-                  let idx = arr.indexOf(UID);
-                  let uid = arr[1 - idx];
-                  console.log("UID la : ", uid);
-                  users.push(uid);
-				    console.log("Mang user gom : ", users)
-                }
-              });
-            } else groups.push(roomId);
+          console.log("Co tim thay file");
+          const firstLine = fs.readFileSync(`./unreadRoom/${file}`, "utf-8");
+          // const firstLine = "f6-g1";
+          if (firstLine !== "") {
+            const idList = firstLine.split("-");
+            for (const roomId of idList) {
+              if (roomId.charAt(0) !== "g") {
+                users.push(roomId);
+              } else groups.push(roomId);
+            }
           }
+          // const firstLine = await readFirstLine(
+          //   `${__dirname}/unreadRoom/${file}`);
+          // console.log("First line : ", firstLine);
+          // if (firstLine !== "") {
+          //   const idList = firstLine.split("-");
+          //   for (const roomId of idList) {
+          //     if (roomId.charAt(0) === "f") {
+          //       const filePath = path.join(
+          //         __dirname,
+          //         "messagesLog",
+          //         `${roomId}.txt`,
+          //       );
+          //       const firstLine = await readFirstLine(filePath);
+          //       console.log("firstline la : ", firstLine);
+          //       let arr = firstLine.split("-");
+          //       let idx = arr.indexOf(UID);
+          //       let uid = arr[1 - idx];
+          //       console.log("UID la : ", uid);
+          //       users.push(uid);
+          //       console.log("Mang user gom : ", users);
+          //     } else groups.push(roomId);
+          //   }
+          // }
         }
       }
     })();
-    console.log(users, groups)
+    console.log("Ok co chay nha");
+    console.log(users, groups);
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ friend: users, group: groups}));
+    res.end(JSON.stringify({ friend: users, group: groups }));
   } else if (method === "GET" && pathname === "/chat") {
     const roomId = req.headers["roomid"];
     //Check if room exist
